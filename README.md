@@ -383,5 +383,5 @@ This project is for educational and research purposes.
 ---
 
 <p align="center">
-  <em>Built as a quantitative research project exploring the intersection of central bank communication and market volatility.</em>
+  <em>Built as a quantitative research project exploring the intersection of central bank communication and market volatility</em>
 </p>
