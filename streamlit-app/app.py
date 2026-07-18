@@ -116,8 +116,11 @@ def get_market_context():
 
 # --- SIDEBAR: LIVE MARKET CONTEXT ---
 with st.sidebar:
-    with open("logo.png", "rb") as img_file:
+    BASE_DIR = Path(__file__).resolve().parent
+
+    with open(BASE_DIR / "logo.png", "rb") as img_file:
         logo_b64 = base64.b64encode(img_file.read()).decode()
+        
     st.markdown(
         f'<div style="text-align:center; padding:12px 0 20px;">'
         f'<img src="data:image/png;base64,{logo_b64}" width="600" '
