@@ -35,11 +35,18 @@ local_css("style.css")
 
 @st.cache_resource
 def load_artifacts():
+    
     # Paths adjusted for streamlit-app/ folder structure
-    model = joblib.load('../models/rbi_vix_rf_model.pkl')
-    scaler = joblib.load('../models/scaler.pkl')
-    feature_names = joblib.load('../models/feature_names.pkl')
-    shock_threshold = joblib.load('../models/shock_threshold.pkl')
+    from pathlib import Path
+
+    BASE_DIR = Path(__file__).resolve().parent
+    MODELS_DIR = BASE_DIR.parent / "models"
+    
+    model = joblib.load(MODELS_DIR / "rbi_vix_rf_model.pkl")
+    scaler = joblib.load(MODELS_DIR / "scaler.pkl")
+    feature_names = joblib.load(MODELS_DIR / "feature_names.pkl")
+    shock_threshold = joblib.load(MODELS_DIR / "shock_threshold.pkl")
+    
     # Load FinBERT model + tokenizer (matching training pipeline)
     tokenizer = AutoTokenizer.from_pretrained("ProsusAI/finbert")
     finbert = AutoModelForSequenceClassification.from_pretrained(
