@@ -10,6 +10,12 @@ import torch.nn.functional as F
 import base64
 from pathlib import Path
 
+# --- EXAMPLE DATA (from sample_data.py in same folder) ---
+try:
+    from sample_data import EXAMPLE_SPEECHES
+except Exception:
+    EXAMPLE_SPEECHES = []
+
 # --- PAGE CONFIG ---
 st.set_page_config(
     page_title="RBI Sentinel",
@@ -38,7 +44,8 @@ def local_css(file_name: str):
         with open(css_path, "r", encoding="utf-8") as f:
             st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
     except FileNotFoundError:
-        st.warning(f"Stylesheet not found at {css_path}. Continuing without custom styling.")
+        st.warning(
+            f"Stylesheet not found at {css_path}. Continuing without custom styling.")
     except OSError as e:
         st.warning(f"Could not load stylesheet: {e}")
 
@@ -81,6 +88,10 @@ def load_artifacts():
 
 
 model, scaler, feature_names, shock_threshold, tokenizer, finbert, device = load_artifacts()
+
+# --- SESSION STATE INIT (for example buttons) ---
+if "text_input" not in st.session_state:
+    st.session_state.text_input = ""
 
 
 def get_sentiment_score(text):
@@ -146,7 +157,8 @@ def get_market_context():
         prev_vix = float(vix['Close'].iloc[-2])
 
         # Log return to match training pipeline (np.log(P_t / P_{t-5}))
-        nifty_5d_ret = float(np.log(nifty['Close'].iloc[-1] / nifty['Close'].iloc[-6]))
+        nifty_5d_ret = float(
+            np.log(nifty['Close'].iloc[-1] / nifty['Close'].iloc[-6]))
         # Rolling std of log daily returns to match training pipeline
         nifty_log_daily_ret = np.log(nifty['Close'] / nifty['Close'].shift(1))
         nifty_std = float(nifty_log_daily_ret.tail(5).std())
@@ -219,14 +231,38 @@ st.subheader("Monetary policy sentiment → volatility shock prediction")
 
 st.write("")
 
+# --- EXAMPLE SPEECH BUTTONS ---
+if EXAMPLE_SPEECHES:
+    btn_row_left, _ = st.columns([3, 1])
+    with btn_row_left:
+        num_examples = min(len(EXAMPLE_SPEECHES), 2)
+        ex_cols = st.columns(num_examples)
+        for idx in range(num_examples):
+            with ex_cols[idx]:
+                speech_date = EXAMPLE_SPEECHES[idx].get(
+                    "date", f"Example {idx+1}")
+                btn_label = f"Try RBI Governor's Speech\n from {speech_date}"
+                if st.button(btn_label, use_container_width=True, key=f"btn_ex{idx+1}"):
+                    example_text = EXAMPLE_SPEECHES[idx]["text"]
+                    if isinstance(example_text, list):
+                        example_text = "\n\n".join(
+                            str(part) for part in example_text)
+                    elif not isinstance(example_text, str):
+                        example_text = str(example_text)
+                    st.session_state.text_input = example_text
+                    st.rerun()
+    st.write("")
+
 col1, col2 = st.columns([3, 1], gap="large")
 
 with col1:
     user_text = st.text_area(
         "Paste RBI communication",
+        value=st.session_state.text_input,
         placeholder="Paste the full text of an RBI Governor speech or MPC Minutes here...",
         height=320,
-        label_visibility="collapsed")
+        label_visibility="collapsed",
+        key="text_input")
     doc_type = st.selectbox("Document type", ["Speech", "MPC_Minutes"])
 
 with col2:
@@ -358,7 +394,8 @@ if predict_btn:
             st.write("")
             st.write("")
             st.markdown("### How this is calculated")
-            st.caption("A transparent look at every step behind the prediction.")
+            st.caption(
+                "A transparent look at every step behind the prediction.")
             st.write("")
 
             with st.expander("Data Pipeline", expanded=True):
@@ -396,7 +433,8 @@ if predict_btn:
                         "1 if MPC minutes, 0 if speech"
                     ]
                 })
-                st.dataframe(feat_df, use_container_width=True, hide_index=True)
+                st.dataframe(feat_df, use_container_width=True,
+                             hide_index=True)
 
                 st.markdown(f"""
                 <div class="pipeline-step">
