@@ -9,6 +9,7 @@ import torch
 import torch.nn.functional as F
 import base64
 from pathlib import Path
+import time  # ADDED for retry delays
 
 # --- EXAMPLE DATA (from sample_data.py in same folder) ---
 try:
@@ -25,11 +26,6 @@ st.set_page_config(
 )
 
 # --- PATH CONFIG ---
-# BASE_DIR = the folder containing this app.py (e.g. "streamlit-app/").
-# CSS/logo are resolved relative to it; the models/ directory is resolved
-# relative to its parent, matching the repo's existing folder layout.
-# Path(__file__) is used instead of "./" or "../" strings so this works
-# regardless of the process's current working directory on Streamlit Cloud.
 BASE_DIR = Path(__file__).resolve().parent
 MODELS_DIR = BASE_DIR.parent / "models"
 
@@ -89,9 +85,11 @@ def load_artifacts():
 
 model, scaler, feature_names, shock_threshold, tokenizer, finbert, device = load_artifacts()
 
-# --- SESSION STATE INIT (for example buttons) ---
+# --- SESSION STATE INIT ---
 if "text_input" not in st.session_state:
     st.session_state.text_input = ""
+
+# --- SENTIMENT SCORING ---
 
 
 def get_sentiment_score(text):
@@ -130,13 +128,10 @@ def get_sentiment_score(text):
 # --- MARKET DATA FETCHING ---
 
 
-@st.cache_data(ttl=3600)
-def get_market_context():
+def _fetch_market_data_raw():
     """
-    Fetches live India VIX, Nifty 50, and CBOE VIX data from Yahoo Finance.
-    Never raises — on any network failure, rate-limit, empty response, or
-    insufficient history, it returns success=False with a human-readable
-    error message so callers can degrade gracefully instead of crashing.
+    Core fetch logic. Returns a dict with a 'success' flag.
+    Never raises — all errors are caught and returned gracefully.
     """
     try:
         vix = yf.Ticker("^INDIAVIX").history(period="5d")
@@ -180,6 +175,37 @@ def get_market_context():
     }
 
 
+def fetch_market_data_with_retry(max_retries=3, base_delay=1.5):
+    """
+    Fetch market data with exponential backoff.
+    Retries on failure to handle transient rate limits or network blips.
+    """
+    for attempt in range(max_retries):
+        result = _fetch_market_data_raw()
+        if result["success"]:
+            return result
+        if attempt < max_retries - 1:
+            time.sleep(base_delay * (2 ** attempt))
+    return result
+
+
+def get_market_context(force_refresh=False):
+    """
+    Returns market data using session-state caching so the app only fetches
+    once per user session (survives reruns). Users can force a refresh via
+    the sidebar button.
+    """
+    if not force_refresh and "market_data" in st.session_state:
+        return st.session_state.market_data
+
+    result = fetch_market_data_with_retry()
+
+    if result["success"]:
+        st.session_state.market_data = result
+
+    return result
+
+
 # --- SIDEBAR: LIVE MARKET CONTEXT ---
 with st.sidebar:
     logo_path = BASE_DIR / "logo.png"
@@ -203,7 +229,10 @@ with st.sidebar:
 
     st.header("Live Market")
 
-    market_data = get_market_context()
+    # Let user manually refresh market data
+    force_refresh = st.button("🔄 Refresh Market Data", use_container_width=True)
+
+    market_data = get_market_context(force_refresh=force_refresh)
 
     if market_data["success"]:
         curr_vix = market_data["curr_vix"]
@@ -220,6 +249,9 @@ with st.sidebar:
         curr_vix = prev_vix = nifty_ret = nifty_std = us_vix_val = None
         st.error("⚠️ Live market data unavailable right now.")
         st.caption(market_data["error"])
+        if st.button("Retry Now", key="retry_market"):
+            st.session_state.pop("market_data", None)
+            st.rerun()
 
     st.divider()
     st.caption(f"THRESHOLD  ·  VIX RET > {shock_threshold:.4f}")
@@ -256,19 +288,21 @@ if EXAMPLE_SPEECHES:
 col1, col2 = st.columns([3, 1], gap="large")
 
 with col1:
+    # FIX: Removed value= parameter. Streamlit binds this widget to
+    # st.session_state.text_input automatically via key="text_input".
     user_text = st.text_area(
         "Paste RBI communication",
-        value=st.session_state.text_input,
         placeholder="Paste the full text of an RBI Governor speech or MPC Minutes here...",
         height=320,
         label_visibility="collapsed",
         key="text_input")
+
     doc_type = st.selectbox("Document type", ["Speech", "MPC_Minutes"])
 
 with col2:
     st.markdown("""
     **How it works**
-    
+
     1. Paste a full RBI speech or MPC minutes.
     2. Choose the document type.
     3. The system runs **FinBERT** sentiment analysis and combines it with live market data to predict VIX shock probability.
@@ -313,10 +347,8 @@ if predict_btn:
             risk_level = "High" if prob > 0.65 else "Moderate" if prob > 0.35 else "Low"
             risk_cls = risk_level.lower()
             risk_color = "#FF5252" if risk_level == "High" else "#FFAB40" if risk_level == "Moderate" else "#00E676"
-            sentiment_label = "Positive" if raw_score > 0.05 else "Negative" if raw_score < - \
-                0.05 else "Neutral"
-            sent_color = "#00E676" if raw_score > 0.05 else "#FF5252" if raw_score < - \
-                0.05 else "#8B8FA3"
+            sentiment_label = "Positive" if raw_score > 0.05 else "Negative" if raw_score < -0.05 else "Neutral"
+            sent_color = "#00E676" if raw_score > 0.05 else "#FF5252" if raw_score < -0.05 else "#8B8FA3"
 
             # Top row: 3 key numbers
             k1, k2, k3 = st.columns(3)
