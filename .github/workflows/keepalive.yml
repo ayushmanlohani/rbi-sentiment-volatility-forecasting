@@ -1,3 +1,4 @@
+name: Streamlit Keepalive
 # Opens the app in a real browser every 6 hours so Streamlit sees real
 # traffic and never sleeps it. The monthly empty commit keeps GitHub's own
 # scheduler from pausing this workflow after 60 quiet days.
