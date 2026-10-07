@@ -1,0 +1,40 @@
+# Opens the app in a real browser every 6 hours so Streamlit sees real
+# traffic and never sleeps it. The monthly empty commit keeps GitHub's own
+# scheduler from pausing this workflow after 60 quiet days.
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+    - cron: "0 0 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  visit:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 */6 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install browser robot
+        run: |
+          pip install playwright
+          playwright install chromium --with-deps
+      - name: Visit app in real browser
+        run: python scripts/keepalive.py
+
+  monthly-touch:
+    if: github.event.schedule == '0 0 1 * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Empty commit so GitHub never pauses this scheduler
+        run: |
+          git config user.name "keepalive-bot"
+          git config user.email "keepalive-bot@users.noreply.github.com"
+          git commit --allow-empty -m "chore: keepalive touch"
+          git push
